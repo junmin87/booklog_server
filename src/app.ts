@@ -10,11 +10,18 @@ import axios from 'axios';
 import jwt from 'jsonwebtoken';
 import fs from 'fs';
 import qs from 'qs';
+import { createClient } from '@supabase/supabase-js';
 
 interface NotificationRequest {
   title: string;
   content: string;
 }
+
+
+const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -55,8 +62,49 @@ app.post('/send-notification', async (req: express.Request, res: express.Respons
   }
 });
 
+
+// 오토 로그인때 주로 사용함
 // JWT token validation
-app.post('/validate-token', (req: Request, res: Response) => {
+// app.post('/validate-token', (req: Request, res: Response) => {
+//   const authHeader = req.headers.authorization;
+
+//   if (!authHeader || !authHeader.startsWith('Bearer ')) {
+//     return res.status(400).json({ error: 'accessToken 누락' });
+//   }
+
+//   const token = authHeader.split(' ')[1];
+
+//   try {
+//     const decoded = jwt.verify(token, process.env.JWT_SECRET!);
+
+//     const { userId, email, snsType } = decoded as {
+//       userId: string;
+//       email?: string;
+//       snsType: 'apple';
+//     };
+
+//     return res.status(200).json({
+//       valid: true,
+//       userId,
+//       email: email ?? null,
+//       snsType,
+//     });
+//   } catch (err) {
+//     console.error('[TOKEN VERIFY ERROR]', err);
+//     return res.status(401).json({
+//       valid: false,
+//       error: 'Invalid or expired token',
+//     });
+//   }
+// });
+
+
+
+
+
+// 오토 로그인때 주로 사용함
+// JWT token validation
+app.post('/validate-token', async (req: Request, res: Response) => {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -74,11 +122,22 @@ app.post('/validate-token', (req: Request, res: Response) => {
       snsType: 'apple';
     };
 
+    const { data: user } = await supabase
+      .from('booklog_users')
+      .select('deleted_at, country_code')
+      .eq('apple_user_id', userId)
+      .single();
+
+    if (!user || user.deleted_at !== null) {
+      return res.status(401).json({ valid: false, error: 'User not found or deleted' });
+    }
+
     return res.status(200).json({
       valid: true,
       userId,
       email: email ?? null,
       snsType,
+      country_code: user.country_code ?? null,
     });
   } catch (err) {
     console.error('[TOKEN VERIFY ERROR]', err);
@@ -88,6 +147,67 @@ app.post('/validate-token', (req: Request, res: Response) => {
     });
   }
 });
+
+
+// Apple Sign In
+// app.post('/apple/login', async (req: Request, res: Response) => {
+//   const { userIdentifier, email, authorizationCode } = req.body;
+
+//   if (!userIdentifier) {
+//     return res.status(400).json({ error: 'userIdentifier 누락' });
+//   }
+
+//   const serverToken = jwt.sign(
+//     {
+//       snsType: 'apple',
+//       userId: userIdentifier,
+//       ...(email && { email }),
+//     },
+//     process.env.JWT_SECRET!,
+//     { expiresIn: '30d' }
+//   );
+
+//   let refreshToken: string | null = null;
+
+//   if (authorizationCode) {
+//     try {
+//       const clientSecret = generateAppleClientSecret();
+//       console.log('if authorizationCode >> ');
+
+//       const params = qs.stringify({
+//         client_id: process.env.APPLE_CLIENT_ID!,
+//         client_secret: clientSecret,
+//         code: authorizationCode,
+//         grant_type: 'authorization_code',
+//         redirect_uri: process.env.APPLE_REDIRECT_URI!,
+//       });
+
+//       const tokenResponse = await axios.post(
+//         'https://appleid.apple.com/auth/oauth2/v2/token',
+//         params,
+//         {
+//           headers: {
+//             'Content-Type': 'application/x-www-form-urlencoded',
+//           },
+//         }
+//       );
+
+//       refreshToken = tokenResponse.data.refresh_token;
+//       console.log('✅ Apple refresh_token 획득 성공');
+//     } catch (err) {
+//       console.error('❌ Apple authorizationCode 토큰 요청 실패:', err);
+//       return res.status(500).json({ error: 'Apple 토큰 요청 실패' });
+//     }
+//   }
+
+//   return res.json({
+//     serverToken,
+//     ...(refreshToken && { refreshToken }),
+//   });
+// });
+
+
+
 
 // Apple Sign In
 app.post('/apple/login', async (req: Request, res: Response) => {
@@ -140,11 +260,79 @@ app.post('/apple/login', async (req: Request, res: Response) => {
     }
   }
 
+  let countryCode: string | null = null;
+  try {
+    countryCode = await handleUserUpsert(userIdentifier, email ?? null, refreshToken);
+  } catch (err) {
+    console.error('❌ Supabase DB 처리 실패:', err);
+  }
+
   return res.json({
     serverToken,
     ...(refreshToken && { refreshToken }),
+    country_code: countryCode,
   });
 });
+
+
+
+async function handleUserUpsert(
+  userIdentifier: string,
+  email: string | null,
+  refreshToken: string | null
+): Promise<string | null> {
+  const { data: existingUser } = await supabase
+    .from('booklog_users')
+    .select('country_code')
+    .eq('apple_user_id', userIdentifier)
+    .single();
+
+  if (existingUser) {
+    return existingUser.country_code ?? null;
+  }
+
+  await supabase.from('booklog_users').insert({
+    apple_user_id: userIdentifier,
+    email: email ?? null,
+    refresh_token: refreshToken ?? null,
+  });
+
+  return null;
+}
+
+
+
+app.post('/user/country', async (req: Request, res: Response) => {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(400).json({ error: 'token 누락' });
+  }
+
+  const token = authHeader.split(' ')[1];
+  const { country_code, language_code } = req.body;
+
+  if (!country_code) {
+    return res.status(400).json({ error: 'country_code 누락' });
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { userId: string };
+
+    const { error } = await supabase
+      .from('booklog_users')
+      .update({ country_code, language_code })
+      .eq('apple_user_id', decoded.userId);
+
+    if (error) throw error;
+
+    return res.status(200).json({ success: true });
+  } catch (err) {
+    console.error('❌ country 업데이트 실패:', err);
+    return res.status(500).json({ error: '업데이트 실패' });
+  }
+});
+
 
 // Apple token revocation
 app.post('/apple/revoke', async (req: Request, res: Response) => {
