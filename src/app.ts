@@ -63,43 +63,6 @@ app.post('/send-notification', async (req: express.Request, res: express.Respons
 });
 
 
-// 오토 로그인때 주로 사용함
-// JWT token validation
-// app.post('/validate-token', (req: Request, res: Response) => {
-//   const authHeader = req.headers.authorization;
-
-//   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-//     return res.status(400).json({ error: 'accessToken 누락' });
-//   }
-
-//   const token = authHeader.split(' ')[1];
-
-//   try {
-//     const decoded = jwt.verify(token, process.env.JWT_SECRET!);
-
-//     const { userId, email, snsType } = decoded as {
-//       userId: string;
-//       email?: string;
-//       snsType: 'apple';
-//     };
-
-//     return res.status(200).json({
-//       valid: true,
-//       userId,
-//       email: email ?? null,
-//       snsType,
-//     });
-//   } catch (err) {
-//     console.error('[TOKEN VERIFY ERROR]', err);
-//     return res.status(401).json({
-//       valid: false,
-//       error: 'Invalid or expired token',
-//     });
-//   }
-// });
-
-
-
 
 
 // 오토 로그인때 주로 사용함
@@ -114,7 +77,14 @@ app.post('/validate-token', async (req: Request, res: Response) => {
   const token = authHeader.split(' ')[1];
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!);
+    // const decoded = jwt.verify(token, process.env.JWT_SECRET!);
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as {
+      userId: string;
+      dbUserId: string;
+      email?: string;
+      snsType: string;
+    };
 
     const { userId, email, snsType } = decoded as {
       userId: string;
@@ -122,11 +92,18 @@ app.post('/validate-token', async (req: Request, res: Response) => {
       snsType: 'apple';
     };
 
+    // const { data: user } = await supabase
+    //   .from('booklog_users')
+    //   .select('deleted_at, country_code')
+    //   .eq('apple_user_id', userId)
+    //   .single();
+
+    // 이렇게 변경
     const { data: user } = await supabase
-      .from('booklog_users')
-      .select('deleted_at, country_code')
-      .eq('apple_user_id', userId)
-      .single();
+    .from('booklog_users')
+    .select('deleted_at, country_code')
+    .eq('id', decoded.dbUserId)  // ✅
+    .single();
 
     if (!user || user.deleted_at !== null) {
       return res.status(401).json({ valid: false, error: 'User not found or deleted' });
@@ -149,63 +126,47 @@ app.post('/validate-token', async (req: Request, res: Response) => {
 });
 
 
-// Apple Sign In
-// app.post('/apple/login', async (req: Request, res: Response) => {
-//   const { userIdentifier, email, authorizationCode } = req.body;
+app.get('/user/me', async (req: Request, res: Response) => {
+  const authHeader = req.headers.authorization;
 
-//   if (!userIdentifier) {
-//     return res.status(400).json({ error: 'userIdentifier 누락' });
-//   }
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(400).json({ error: 'token 누락' });
+  }
 
-//   const serverToken = jwt.sign(
-//     {
-//       snsType: 'apple',
-//       userId: userIdentifier,
-//       ...(email && { email }),
-//     },
-//     process.env.JWT_SECRET!,
-//     { expiresIn: '30d' }
-//   );
+  const token = authHeader.split(' ')[1];
 
-//   let refreshToken: string | null = null;
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as {
+      userId: string;
+      dbUserId: string;
+      snsType: string;
+      email?: string;
+    };
 
-//   if (authorizationCode) {
-//     try {
-//       const clientSecret = generateAppleClientSecret();
-//       console.log('if authorizationCode >> ');
+    const { data: user } = await supabase
+      .from('booklog_users')
+      .select('id, email, country_code, language_code, plan, deleted_at')
+      .eq('id', decoded.dbUserId)
+      .single();
 
-//       const params = qs.stringify({
-//         client_id: process.env.APPLE_CLIENT_ID!,
-//         client_secret: clientSecret,
-//         code: authorizationCode,
-//         grant_type: 'authorization_code',
-//         redirect_uri: process.env.APPLE_REDIRECT_URI!,
-//       });
+    if (!user || user.deleted_at !== null) {
+      return res.status(401).json({ error: 'User not found or deleted' });
+    }
 
-//       const tokenResponse = await axios.post(
-//         'https://appleid.apple.com/auth/oauth2/v2/token',
-//         params,
-//         {
-//           headers: {
-//             'Content-Type': 'application/x-www-form-urlencoded',
-//           },
-//         }
-//       );
-
-//       refreshToken = tokenResponse.data.refresh_token;
-//       console.log('✅ Apple refresh_token 획득 성공');
-//     } catch (err) {
-//       console.error('❌ Apple authorizationCode 토큰 요청 실패:', err);
-//       return res.status(500).json({ error: 'Apple 토큰 요청 실패' });
-//     }
-//   }
-
-//   return res.json({
-//     serverToken,
-//     ...(refreshToken && { refreshToken }),
-//   });
-// });
-
+    return res.status(200).json({
+      id: user.id,
+      email: user.email ?? null,
+      countryCode: user.country_code ?? null,
+      languageCode: user.language_code ?? null,
+      plan: user.plan,
+      snsType: decoded.snsType,
+      snsId: decoded.userId,
+    });
+  } catch (err) {
+    console.error('❌ 유저 정보 조회 실패:', err);
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+});
 
 
 
@@ -322,12 +283,17 @@ app.post('/user/country', async (req: Request, res: Response) => {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { userId: string };
+    // const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { userId: string };
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as {
+      userId: string;
+      dbUserId: string;
+    };
 
     const { error } = await supabase
       .from('booklog_users')
       .update({ country_code, language_code })
-      .eq('apple_user_id', decoded.userId);
+      // .eq('apple_user_id', decoded.userId);
+      .eq('id', decoded.dbUserId);  // ✅ UUID로 조회
 
     if (error) throw error;
 
@@ -506,6 +472,36 @@ app.post('/book/add', async (req: Request, res: Response) => {
   } catch (err) {
     console.error('❌ 책 등록 실패:', err);
     return res.status(500).json({ error: '책 등록 실패' });
+  }
+});
+
+
+
+app.get('/book/list', async (req: Request, res: Response) => {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(400).json({ error: 'token 누락' });
+  }
+
+  const token = authHeader.split(' ')[1];
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { dbUserId: string };
+
+    const { data: books, error } = await supabase
+      .from('booklog_books')
+      .select('*')
+      .eq('user_id', decoded.dbUserId)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    return res.status(200).json({ books });
+  } catch (err) {
+    console.error('❌ 책 목록 조회 실패:', err);
+    return res.status(500).json({ error: '책 목록 조회 실패' });
   }
 });
 
