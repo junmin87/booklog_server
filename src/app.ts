@@ -217,16 +217,6 @@ app.post('/apple/login', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'userIdentifier 누락' });
   }
 
-  const serverToken = jwt.sign(
-    {
-      snsType: 'apple',
-      userId: userIdentifier,
-      ...(email && { email }),
-    },
-    process.env.JWT_SECRET!,
-    { expiresIn: '30d' }
-  );
-
   let refreshToken: string | null = null;
 
   if (authorizationCode) {
@@ -261,11 +251,25 @@ app.post('/apple/login', async (req: Request, res: Response) => {
   }
 
   let countryCode: string | null = null;
+  let dbUserId: string | null = null;
   try {
-    countryCode = await handleUserUpsert(userIdentifier, email ?? null, refreshToken);
+    const result = await handleUserUpsert(userIdentifier, email ?? null, refreshToken);
+    countryCode = result.countryCode;
+    dbUserId = result.dbUserId;
   } catch (err) {
     console.error('❌ Supabase DB 처리 실패:', err);
   }
+
+  const serverToken = jwt.sign(
+    {
+      snsType: 'apple',
+      userId: userIdentifier,
+      dbUserId: dbUserId,
+      ...(email && { email }),
+    },
+    process.env.JWT_SECRET!,
+    { expiresIn: '30d' }
+  );
 
   return res.json({
     serverToken,
@@ -276,28 +280,29 @@ app.post('/apple/login', async (req: Request, res: Response) => {
 
 
 
+// 애플 유저 아이디로 등록된 유저 데이터베이스가 있는 지 조회
 async function handleUserUpsert(
   userIdentifier: string,
   email: string | null,
   refreshToken: string | null
-): Promise<string | null> {
+): Promise<{ countryCode: string | null; dbUserId: string }> {
   const { data: existingUser } = await supabase
     .from('booklog_users')
-    .select('country_code')
+    .select('id, country_code')
     .eq('apple_user_id', userIdentifier)
     .single();
 
   if (existingUser) {
-    return existingUser.country_code ?? null;
+    return { countryCode: existingUser.country_code ?? null, dbUserId: existingUser.id };
   }
 
-  await supabase.from('booklog_users').insert({
-    apple_user_id: userIdentifier,
-    email: email ?? null,
-    refresh_token: refreshToken ?? null,
-  });
+  const { data: newUser } = await supabase
+    .from('booklog_users')
+    .insert({ apple_user_id: userIdentifier, email, refresh_token: refreshToken })
+    .select('id')
+    .single();
 
-  return null;
+  return { countryCode: null, dbUserId: newUser!.id };
 }
 
 
@@ -412,6 +417,99 @@ function generateAppleClientSecret(): string {
     throw err;
   }
 }
+
+
+// 책 검색
+// Book Search
+app.get('/book/search', async (req: Request, res: Response) => {
+  const { query } = req.query;
+
+  if (!query || typeof query !== 'string') {
+    return res.status(400).json({ error: 'query 파라미터 필요' });
+  }
+
+  try {
+    const response = await axios.get('https://www.aladin.co.kr/ttb/api/ItemSearch.aspx', {
+      params: {
+        ttbkey: process.env.ALADIN_TTB_KEY,
+        Query: query,
+        QueryType: 'Keyword',
+        MaxResults: 10,
+        start: 1,
+        SearchTarget: 'Book',
+        output: 'js',
+        Version: '20131101',
+        Cover: 'Big',
+      },
+    });
+
+    const items = response.data.item ?? [];
+
+    const books = items.map((item: any) => ({
+      title: item.title,
+      author: item.author,
+      publisher: item.publisher,
+      pubDate: item.pubDate,
+      isbn13: item.isbn13,
+      cover: item.cover ?? null,
+      description: item.description ?? null,
+      categoryName: item.categoryName ?? null,
+    }));
+
+    return res.status(200).json({ books });
+  } catch (err) {
+    console.error('❌ 알라딘 검색 실패:', err);
+    return res.status(500).json({ error: '책 검색 실패' });
+  }
+});
+
+
+
+app.post('/book/add', async (req: Request, res: Response) => {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(400).json({ error: 'token 누락' });
+  }
+
+  const token = authHeader.split(' ')[1];
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { dbUserId: string };
+
+    const {
+      title, author, publisher, pub_date,
+      isbn13, cover_url, description, category_name,
+      status, current_page, total_page,
+    } = req.body;
+
+    const { error } = await supabase
+      .from('booklog_books')
+      .insert({
+        user_id: decoded.dbUserId,
+        title,
+        author: author ?? null,
+        publisher: publisher ?? null,
+        pub_date: pub_date ?? null,
+        isbn13: isbn13 ?? null,
+        cover_url: cover_url ?? null,
+        description: description ?? null,
+        category_name: category_name ?? null,
+        status: status ?? 'reading',
+        current_page: current_page ?? 0,
+        total_page: total_page ?? null,
+      });
+
+    if (error) throw error;
+
+    return res.status(200).json({ success: true });
+  } catch (err) {
+    console.error('❌ 책 등록 실패:', err);
+    return res.status(500).json({ error: '책 등록 실패' });
+  }
+});
+
+
 
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
