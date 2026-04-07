@@ -505,6 +505,80 @@ app.get('/book/list', async (req: Request, res: Response) => {
   }
 });
 
+// 문장 관련 기능 추가
+// POST /books/:bookId/sentences
+app.post('/books/:bookId/sentences', async (req: Request, res: Response) => {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(400).json({ error: 'token 누락' });
+  }
+
+  const token = authHeader.split(' ')[1];
+  const { bookId } = req.params;
+  const { content, pageNumber } = req.body;
+
+  if (!content) {
+    return res.status(400).json({ error: 'content 누락' });
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as {
+      dbUserId: string;
+    };
+
+    const { error } = await supabase
+      .from('booklog_sentences')
+      .insert({
+        user_id: decoded.dbUserId,
+        book_id: bookId,
+        content,
+        page_number: pageNumber ?? null,
+      });
+
+    if (error) throw error;
+
+    return res.status(201).json({ success: true });
+  } catch (err) {
+    console.error('❌ 문장 추가 실패:', err);
+    return res.status(500).json({ error: '문장 추가 실패' });
+  }
+});
+
+
+// GET /books/:bookId/sentences
+app.get('/books/:bookId/sentences', async (req: Request, res: Response) => {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(400).json({ error: 'token 누락' });
+  }
+
+  const token = authHeader.split(' ')[1];
+  const { bookId } = req.params;
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as {
+      dbUserId: string;
+    };
+
+    const { data: sentences, error } = await supabase
+      .from('booklog_sentences')
+      .select('*')
+      .eq('book_id', bookId)
+      .eq('user_id', decoded.dbUserId)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    return res.status(200).json({ sentences });
+  } catch (err) {
+    console.error('❌ 문장 목록 조회 실패:', err);
+    return res.status(500).json({ error: '문장 목록 조회 실패' });
+  }
+});
+
 
 
 app.listen(port, () => {
