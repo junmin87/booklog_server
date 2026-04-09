@@ -477,6 +477,37 @@ app.post('/book/add', async (req: Request, res: Response) => {
 
 
 
+// app.get('/book/list', async (req: Request, res: Response) => {
+//   const authHeader = req.headers.authorization;
+
+//   if (!authHeader || !authHeader.startsWith('Bearer ')) {
+//     return res.status(400).json({ error: 'token 누락' });
+//   }
+
+//   const token = authHeader.split(' ')[1];
+
+//   try {
+//     const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { dbUserId: string };
+
+//     const { data: books, error } = await supabase
+//       .from('booklog_books')
+//       .select('*')
+//       .eq('user_id', decoded.dbUserId)
+//       .is('deleted_at', null)
+//       .order('created_at', { ascending: false });
+
+//     if (error) throw error;
+
+//     return res.status(200).json({ books });
+//   } catch (err) {
+//     console.error('❌ 책 목록 조회 실패:', err);
+//     return res.status(500).json({ error: '책 목록 조회 실패' });
+//   }
+// });
+
+
+
+
 app.get('/book/list', async (req: Request, res: Response) => {
   const authHeader = req.headers.authorization;
 
@@ -498,12 +529,46 @@ app.get('/book/list', async (req: Request, res: Response) => {
 
     if (error) throw error;
 
-    return res.status(200).json({ books });
+    // 각 책의 대표 문장 조회
+    const booksWithSentence = await Promise.all(
+      (books ?? []).map(async (book) => {
+        const { data: sentence } = await supabase
+          .from('booklog_sentences')
+          .select('content')
+          .eq('book_id', book.id)
+          .eq('is_representative', true)
+          .maybeSingle();
+
+        // 대표 문장 없으면 최신 문장으로 폴백
+        if (!sentence) {
+          const { data: latest } = await supabase
+            .from('booklog_sentences')
+            .select('content')
+            .eq('book_id', book.id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          return {
+            ...book,
+            representative_sentence: latest?.content ?? null,
+          };
+        }
+
+        return {
+          ...book,
+          representative_sentence: sentence.content,
+        };
+      })
+    );
+
+    return res.status(200).json({ books: booksWithSentence });
   } catch (err) {
     console.error('❌ 책 목록 조회 실패:', err);
     return res.status(500).json({ error: '책 목록 조회 실패' });
   }
 });
+
 
 // 문장 관련 기능 추가
 // POST /books/:bookId/sentences
@@ -577,8 +642,45 @@ app.get('/books/:bookId/sentences', async (req: Request, res: Response) => {
     console.error('❌ 문장 목록 조회 실패:', err);
     return res.status(500).json({ error: '문장 목록 조회 실패' });
   }
+
 });
 
+
+// 문장 수정
+app.patch('/books/:bookId/sentences/:sentenceId/representative', async (req: Request, res: Response) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(400).json({ error: 'token 누락' });
+  }
+
+  const token = authHeader.split(' ')[1];
+  const { bookId, sentenceId } = req.params;
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { dbUserId: string };
+
+    // 기존 대표 문장 해제
+    await supabase
+      .from('booklog_sentences')
+      .update({ is_representative: false })
+      .eq('book_id', bookId)
+      .eq('user_id', decoded.dbUserId);
+
+    // 새 대표 문장 설정
+    const { error } = await supabase
+      .from('booklog_sentences')
+      .update({ is_representative: true })
+      .eq('id', sentenceId)
+      .eq('user_id', decoded.dbUserId);
+
+    if (error) throw error;
+
+    return res.status(200).json({ success: true });
+  } catch (err) {
+    console.error('❌ 대표 문장 설정 실패:', err);
+    return res.status(500).json({ error: '대표 문장 설정 실패' });
+  }
+});
 
 
 app.listen(port, () => {
