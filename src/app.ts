@@ -11,6 +11,7 @@ import jwt from 'jsonwebtoken';
 import fs from 'fs';
 import qs from 'qs';
 import { createClient } from '@supabase/supabase-js';
+import { authenticate } from './middlewares/auth';
 
 interface NotificationRequest {
   title: string;
@@ -126,27 +127,12 @@ app.post('/validate-token', async (req: Request, res: Response) => {
 });
 
 
-app.get('/user/me', async (req: Request, res: Response) => {
-  const authHeader = req.headers.authorization;
-
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(400).json({ error: 'token 누락' });
-  }
-
-  const token = authHeader.split(' ')[1];
-
+app.get('/user/me', authenticate, async (req: Request, res: Response) => {
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as {
-      userId: string;
-      dbUserId: string;
-      snsType: string;
-      email?: string;
-    };
-
     const { data: user } = await supabase
       .from('booklog_users')
       .select('id, email, country_code, language_code, plan, deleted_at')
-      .eq('id', decoded.dbUserId)
+      .eq('id', req.user!.dbUserId)
       .single();
 
     if (!user || user.deleted_at !== null) {
@@ -159,8 +145,8 @@ app.get('/user/me', async (req: Request, res: Response) => {
       countryCode: user.country_code ?? null,
       languageCode: user.language_code ?? null,
       plan: user.plan,
-      snsType: decoded.snsType,
-      snsId: decoded.userId,
+      snsType: req.user!.snsType,
+      snsId: req.user!.userId,
     });
   } catch (err) {
     console.error('❌ 유저 정보 조회 실패:', err);
@@ -307,14 +293,7 @@ async function handleUserUpsert(
 
 
 
-app.post('/user/country', async (req: Request, res: Response) => {
-  const authHeader = req.headers.authorization;
-
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(400).json({ error: 'token 누락' });
-  }
-
-  const token = authHeader.split(' ')[1];
+app.post('/user/country', authenticate, async (req: Request, res: Response) => {
   const { country_code, language_code } = req.body;
 
   if (!country_code) {
@@ -322,17 +301,10 @@ app.post('/user/country', async (req: Request, res: Response) => {
   }
 
   try {
-    // const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { userId: string };
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as {
-      userId: string;
-      dbUserId: string;
-    };
-
     const { error } = await supabase
       .from('booklog_users')
       .update({ country_code, language_code })
-      // .eq('apple_user_id', decoded.userId);
-      .eq('id', decoded.dbUserId);  // ✅ UUID로 조회
+      .eq('id', req.user!.dbUserId);  // ✅ UUID로 조회
 
     if (error) throw error;
 
@@ -425,24 +397,12 @@ function generateAppleClientSecret(): string {
 
 
 // 애플 탈퇴
-app.delete('/user/apple', async (req: Request, res: Response) => {
-  const authHeader = req.headers.authorization;
-
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(400).json({ error: 'token 누락' });
-  }
-
-  const token = authHeader.split(' ')[1];
-
+app.delete('/user/apple', authenticate, async (req: Request, res: Response) => {
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as {
-      dbUserId: string;
-    };
-
     const { data: user } = await supabase
       .from('booklog_users')
       .select('apple_refresh_token')
-      .eq('id', decoded.dbUserId)
+      .eq('id', req.user!.dbUserId)
       .single();
 
     if (!user) {
@@ -456,7 +416,7 @@ app.delete('/user/apple', async (req: Request, res: Response) => {
     const { error } = await supabase
       .from('booklog_users')
       .update({ deleted_at: new Date().toISOString() })
-      .eq('id', decoded.dbUserId);
+      .eq('id', req.user!.dbUserId);
 
     if (error) throw error;
 
@@ -545,18 +505,8 @@ app.get('/book/search', async (req: Request, res: Response) => {
 
 
 
-app.post('/book/add', async (req: Request, res: Response) => {
-  const authHeader = req.headers.authorization;
-
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(400).json({ error: 'token 누락' });
-  }
-
-  const token = authHeader.split(' ')[1];
-
+app.post('/book/add', authenticate, async (req: Request, res: Response) => {
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { dbUserId: string };
-
     const {
       title, author, publisher, pub_date,
       isbn13, cover_url, description, category_name,
@@ -566,7 +516,7 @@ app.post('/book/add', async (req: Request, res: Response) => {
     const { error } = await supabase
       .from('booklog_books')
       .insert({
-        user_id: decoded.dbUserId,
+        user_id: req.user!.dbUserId,
         title,
         author: author ?? null,
         publisher: publisher ?? null,
@@ -591,22 +541,12 @@ app.post('/book/add', async (req: Request, res: Response) => {
 
 
 
-app.get('/book/list', async (req: Request, res: Response) => {
-  const authHeader = req.headers.authorization;
-
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(400).json({ error: 'token 누락' });
-  }
-
-  const token = authHeader.split(' ')[1];
-
+app.get('/book/list', authenticate, async (req: Request, res: Response) => {
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { dbUserId: string };
-
     const { data: books, error } = await supabase
       .from('booklog_books')
       .select('*')
-      .eq('user_id', decoded.dbUserId)
+      .eq('user_id', req.user!.dbUserId)
       .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
@@ -655,14 +595,7 @@ app.get('/book/list', async (req: Request, res: Response) => {
 
 // 문장 관련 기능 추가
 // POST /books/:bookId/sentences
-app.post('/books/:bookId/sentences', async (req: Request, res: Response) => {
-  const authHeader = req.headers.authorization;
-
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(400).json({ error: 'token 누락' });
-  }
-
-  const token = authHeader.split(' ')[1];
+app.post('/books/:bookId/sentences', authenticate, async (req: Request, res: Response) => {
   const { bookId } = req.params;
   const { content, pageNumber } = req.body;
 
@@ -671,14 +604,10 @@ app.post('/books/:bookId/sentences', async (req: Request, res: Response) => {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as {
-      dbUserId: string;
-    };
-
     const { error } = await supabase
       .from('booklog_sentences')
       .insert({
-        user_id: decoded.dbUserId,
+        user_id: req.user!.dbUserId,
         book_id: bookId,
         content,
         page_number: pageNumber ?? null,
@@ -695,26 +624,15 @@ app.post('/books/:bookId/sentences', async (req: Request, res: Response) => {
 
 
 // GET /books/:bookId/sentences
-app.get('/books/:bookId/sentences', async (req: Request, res: Response) => {
-  const authHeader = req.headers.authorization;
-
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(400).json({ error: 'token 누락' });
-  }
-
-  const token = authHeader.split(' ')[1];
+app.get('/books/:bookId/sentences', authenticate, async (req: Request, res: Response) => {
   const { bookId } = req.params;
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as {
-      dbUserId: string;
-    };
-
     const { data: sentences, error } = await supabase
       .from('booklog_sentences')
       .select('*')
       .eq('book_id', bookId)
-      .eq('user_id', decoded.dbUserId)
+      .eq('user_id', req.user!.dbUserId)
       .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
@@ -730,31 +648,23 @@ app.get('/books/:bookId/sentences', async (req: Request, res: Response) => {
 
 
 // 문장 수정
-app.patch('/books/:bookId/sentences/:sentenceId/representative', async (req: Request, res: Response) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(400).json({ error: 'token 누락' });
-  }
-
-  const token = authHeader.split(' ')[1];
+app.patch('/books/:bookId/sentences/:sentenceId/representative', authenticate, async (req: Request, res: Response) => {
   const { bookId, sentenceId } = req.params;
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { dbUserId: string };
-
     // 기존 대표 문장 해제
     await supabase
       .from('booklog_sentences')
       .update({ is_representative: false })
       .eq('book_id', bookId)
-      .eq('user_id', decoded.dbUserId);
+      .eq('user_id', req.user!.dbUserId);
 
     // 새 대표 문장 설정
     const { error } = await supabase
       .from('booklog_sentences')
       .update({ is_representative: true })
       .eq('id', sentenceId)
-      .eq('user_id', decoded.dbUserId);
+      .eq('user_id', req.user!.dbUserId);
 
     if (error) throw error;
 
