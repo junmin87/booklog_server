@@ -1,17 +1,13 @@
-import { Request, Response } from 'express';
-import { supabase } from '../lib/supabase';
-import { revokeAppleToken } from './auth.controller';
+import { Request, Response, NextFunction } from 'express';
+import * as userService from '../services/user.service';
+import { AppError } from '../errors/AppError';
 
-export async function getMe(req: Request, res: Response) {
+export async function getMe(req: Request, res: Response, next: NextFunction) {
   try {
-    const { data: user } = await supabase
-      .from('booklog_users')
-      .select('id, email, country_code, language_code, plan, deleted_at')
-      .eq('id', req.user!.dbUserId)
-      .single();
+    const user = await userService.getUser(req.user!.dbUserId);
 
     if (!user || user.deleted_at !== null) {
-      return res.status(401).json({ error: 'User not found or deleted' });
+      return next(new AppError(401, 'User not found or deleted'));
     }
 
     return res.status(200).json({
@@ -25,59 +21,32 @@ export async function getMe(req: Request, res: Response) {
     });
   } catch (err) {
     console.error('❌ 유저 정보 조회 실패:', err);
-    return res.status(401).json({ error: 'Invalid token' });
+    return next(err);
   }
 }
 
-export async function updateCountry(req: Request, res: Response) {
+export async function updateCountry(req: Request, res: Response, next: NextFunction) {
   const { country_code, language_code } = req.body;
 
-  if (!country_code) {
-    return res.status(400).json({ error: 'country_code 누락' });
-  }
-
   try {
-    const { error } = await supabase
-      .from('booklog_users')
-      .update({ country_code, language_code })
-      .eq('id', req.user!.dbUserId);
-
-    if (error) throw error;
-
+    await userService.updateCountry(req.user!.dbUserId, country_code, language_code);
     return res.status(200).json({ success: true });
   } catch (err) {
     console.error('❌ country 업데이트 실패:', err);
-    return res.status(500).json({ error: '업데이트 실패' });
+    return next(err);
   }
 }
 
 // 애플 탈퇴
-export async function deleteAppleUser(req: Request, res: Response) {
+export async function deleteAppleUser(req: Request, res: Response, next: NextFunction) {
   try {
-    const { data: user } = await supabase
-      .from('booklog_users')
-      .select('apple_refresh_token')
-      .eq('id', req.user!.dbUserId)
-      .single();
-
-    if (!user) {
-      return res.status(404).json({ error: '유저 없음' });
-    }
-
-    if (user.apple_refresh_token) {
-      await revokeAppleToken(user.apple_refresh_token);
-    }
-
-    const { error } = await supabase
-      .from('booklog_users')
-      .update({ deleted_at: new Date().toISOString() })
-      .eq('id', req.user!.dbUserId);
-
-    if (error) throw error;
-
+    await userService.softDeleteUser(req.user!.dbUserId);
     return res.status(200).json({ success: true });
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.code === 'NOT_FOUND') {
+      return next(new AppError(404, '유저 없음'));
+    }
     console.error('❌ 계정 탈퇴 실패:', err);
-    return res.status(500).json({ error: '계정 탈퇴 실패' });
+    return next(err);
   }
 }
