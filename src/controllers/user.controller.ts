@@ -37,6 +37,28 @@ export async function updateCountry(req: Request, res: Response, next: NextFunct
   }
 }
 
+export async function updateFcmToken(req: Request, res: Response, next: NextFunction) {
+  const { fcm_token } = req.body;
+
+  try {
+    await userService.updateFcmToken(req.user!.dbUserId, fcm_token);
+    return res.status(200).json({ success: true });
+  } catch (err) {
+    console.error('❌ FCM 토큰 업데이트 실패:', err);
+    return next(err);
+  }
+}
+
+export async function deleteFcmToken(req: Request, res: Response, next: NextFunction) {
+  try {
+    await userService.deleteFcmToken(req.user!.dbUserId);
+    return res.status(200).json({ success: true });
+  } catch (err) {
+    console.error('❌ FCM 토큰 삭제 실패:', err);
+    return next(err);
+  }
+}
+
 // 애플 탈퇴
 export async function deleteAppleUser(req: Request, res: Response, next: NextFunction) {
   try {

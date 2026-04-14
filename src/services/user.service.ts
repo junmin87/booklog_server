@@ -53,3 +53,21 @@ export async function softDeleteUser(dbUserId: string): Promise<void> {
 
   if (error) throw error;
 }
+
+export async function updateFcmToken(dbUserId: string, fcmToken: string): Promise<void> {
+  const { error } = await supabase
+    .from('booklog_users')
+    .update({ fcm_token: fcmToken })
+    .eq('id', dbUserId);
+
+  if (error) throw error;
+}
+
+export async function deleteFcmToken(dbUserId: string): Promise<void> {
+  const { error } = await supabase
+    .from('booklog_users')
+    .update({ fcm_token: null })
+    .eq('id', dbUserId);
+
+  if (error) throw error;
+}
