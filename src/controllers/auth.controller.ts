@@ -6,8 +6,11 @@ import {
   handleUserUpsert,
   exchangeAppleAuthCode,
   getValidatedUser,
+  handleKakaoUserUpsert,  // 카카오
 } from '../services/auth.service';
 import { AppError } from '../errors/AppError';
+
+
 
 export { generateAppleClientSecret, revokeAppleToken };
 
@@ -108,4 +111,60 @@ export async function appleRevoke(req: Request, res: Response, next: NextFunctio
     console.error('❌ Apple revoke error:', error);
     return next(new AppError(500, 'Failed to revoke Apple token'));
   }
+}
+
+// Kakao Login
+export async function kakaoLogin(req: Request, res: Response, next: NextFunction) {
+  const { accessToken } = req.body;
+
+  if (!accessToken) {
+    return next(new AppError(400, 'accessToken 누락'));
+  }
+
+
+  // 카카오 API로 유저 정보 조회
+  // Verify user by calling Kakao API with the access token
+  let kakaoUser;
+  try {
+    const response = await fetch('https://kapi.kakao.com/v2/user/me', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!response.ok) {
+      return next(new AppError(401, '카카오 토큰 검증 실패'));
+    }
+    kakaoUser = await response.json();
+  } catch (err) {
+    console.error('❌ 카카오 유저 정보 조회 실패:', err);
+    return next(new AppError(500, '카카오 API 요청 실패'));
+  }
+
+  const kakaoId = String(kakaoUser.id);
+  const email = kakaoUser.kakao_account?.email ?? null;
+
+  let countryCode: string | null = null;
+  let dbUserId: string | null = null;
+  try {
+    // const result = await handleUserUpsert(kakaoId, email, null);
+    const result = await handleKakaoUserUpsert(kakaoId, email);
+    countryCode = result.countryCode;
+    dbUserId = result.dbUserId;
+  } catch (err) {
+    console.error('❌ Supabase DB 처리 실패:', err);
+  }
+
+  const serverToken = jwt.sign(
+    {
+      snsType: 'kakao',
+      userId: kakaoId,
+      dbUserId: dbUserId,
+      ...(email && { email }),
+    },
+    process.env.JWT_SECRET!,
+    { expiresIn: '30d' }
+  );
+
+  return res.json({
+    serverToken,
+    country_code: countryCode,
+  });
 }

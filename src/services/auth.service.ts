@@ -142,3 +142,39 @@ export async function getValidatedUser(
 
   return user ?? null;
 }
+
+
+export async function handleKakaoUserUpsert(
+  kakaoId: string,
+  email: string | null
+): Promise<{ countryCode: string | null; dbUserId: string }> {
+  const { data: existingUser } = await supabase
+    .from('booklog_users')
+    .select('id, country_code')
+    .eq('kakao_user_id', kakaoId)
+    .single();
+
+  if (existingUser) {
+    await supabase
+      .from('booklog_users')
+      .update({
+        last_login_at: new Date().toISOString(),
+        deleted_at: null,
+      })
+      .eq('id', existingUser.id);
+
+    return { countryCode: existingUser.country_code ?? null, dbUserId: existingUser.id };
+  }
+
+  const { data: newUser } = await supabase
+    .from('booklog_users')
+    .insert({
+      kakao_user_id: kakaoId,
+      email,
+      last_login_at: new Date().toISOString(),
+    })
+    .select('id')
+    .single();
+
+  return { countryCode: null, dbUserId: newUser!.id };
+}

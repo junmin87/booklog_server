@@ -9,6 +9,7 @@ import authRouter from './routes/auth.routes';
 import userRouter from './routes/user.routes';
 import bookRouter from './routes/book.routes';
 import { errorHandler } from './middlewares/errorHandler';
+import pushRouter from './routes/push.routes';
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -30,6 +31,7 @@ app.use((req: Request, res: express.Response, next: NextFunction) => {
 app.use('/', authRouter);
 app.use('/', userRouter);
 app.use('/', bookRouter);
+app.use('/', pushRouter);
 
 app.use(errorHandler);
 
