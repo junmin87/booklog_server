@@ -1,5 +1,13 @@
 import axios from 'axios';
 import { supabase } from '../lib/supabase';
+import {
+  AladinItem,
+  AladinItemListResponse,
+  BookSearchResult,
+  BookWithRepresentativeSentence,
+  AddBookInput,
+  SentenceRow,
+} from '../types';
 
 const ALADIN_BASE_PARAMS = {
   ttbkey: process.env.ALADIN_TTB_KEY,
@@ -11,7 +19,7 @@ const ALADIN_BASE_PARAMS = {
   Cover: 'Big',
 };
 
-function mapAladinItem(item: any) {
+function mapAladinItem(item: AladinItem): BookSearchResult {
   return {
     title: item.title,
     author: item.author,
@@ -24,16 +32,16 @@ function mapAladinItem(item: any) {
   };
 }
 
-export async function getBestseller(): Promise<object[]> {
-  const response = await axios.get('https://www.aladin.co.kr/ttb/api/ItemList.aspx', {
+export async function getBestseller(): Promise<BookSearchResult[]> {
+  const response = await axios.get<AladinItemListResponse>('https://www.aladin.co.kr/ttb/api/ItemList.aspx', {
     params: { ...ALADIN_BASE_PARAMS, QueryType: 'Bestseller' },
   });
 
   return (response.data.item ?? []).map(mapAladinItem);
 }
 
-export async function searchBook(query: string): Promise<object[]> {
-  const response = await axios.get('https://www.aladin.co.kr/ttb/api/ItemSearch.aspx', {
+export async function searchBook(query: string): Promise<BookSearchResult[]> {
+  const response = await axios.get<AladinItemListResponse>('https://www.aladin.co.kr/ttb/api/ItemSearch.aspx', {
     params: { ...ALADIN_BASE_PARAMS, Query: query, QueryType: 'Keyword' },
   });
 
@@ -42,19 +50,7 @@ export async function searchBook(query: string): Promise<object[]> {
 
 export async function addBook(
   dbUserId: string,
-  fields: {
-    title: string;
-    author?: string;
-    publisher?: string;
-    pub_date?: string;
-    isbn13?: string;
-    cover_url?: string;
-    description?: string;
-    category_name?: string;
-    status?: string;
-    current_page?: number;
-    total_page?: number;
-  }
+  fields: AddBookInput
 ): Promise<void> {
   const { error } = await supabase.from('booklog_books').insert({
     user_id: dbUserId,
@@ -74,7 +70,9 @@ export async function addBook(
   if (error) throw error;
 }
 
-export async function listBooksWithSentences(dbUserId: string): Promise<object[]> {
+export async function listBooksWithSentences(
+  dbUserId: string
+): Promise<BookWithRepresentativeSentence[]> {
   const { data: books, error } = await supabase
     .from('booklog_books')
     .select('*')
@@ -126,7 +124,7 @@ export async function addSentence(
   if (error) throw error;
 }
 
-export async function getSentences(dbUserId: string, bookId: string): Promise<object[]> {
+export async function getSentences(dbUserId: string, bookId: string): Promise<SentenceRow[]> {
   const { data: sentences, error } = await supabase
     .from('booklog_sentences')
     .select('*')

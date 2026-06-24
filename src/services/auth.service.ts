@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import qs from 'qs';
 import { supabase } from '../lib/supabase';
+import { AppleTokenResponse } from '../types';
 
 export function generateAppleClientSecret(): string {
   const resolvedPath = path.resolve(__dirname, '../../', process.env.APPLE_PRIVATE_KEY_PATH!);
@@ -117,7 +118,7 @@ export async function exchangeAppleAuthCode(authorizationCode: string): Promise<
     redirect_uri: process.env.APPLE_REDIRECT_URI!,
   });
 
-  const tokenResponse = await axios.post(
+  const tokenResponse = await axios.post<AppleTokenResponse>(
     'https://appleid.apple.com/auth/oauth2/v2/token',
     params,
     {

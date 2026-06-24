@@ -1,8 +1,18 @@
 import { Request, Response, NextFunction } from 'express';
 import * as bookService from '../services/book.service';
 import { AppError } from '../errors/AppError';
+import {
+  AddBookInput,
+  AddSentenceBody,
+  BookIdParams,
+  SentenceParams,
+  BookListResponse,
+  BookSearchResponse,
+  SentenceListResponse,
+  SuccessResponse,
+} from '../types';
 
-export async function getBestseller(req: Request, res: Response, next: NextFunction) {
+export async function getBestseller(req: Request, res: Response<BookSearchResponse>, next: NextFunction) {
   try {
     const books = await bookService.getBestseller();
     return res.status(200).json({ books });
@@ -12,7 +22,7 @@ export async function getBestseller(req: Request, res: Response, next: NextFunct
 }
 
 // 책 검색
-export async function searchBook(req: Request, res: Response, next: NextFunction) {
+export async function searchBook(req: Request, res: Response<BookSearchResponse>, next: NextFunction) {
   const { query } = req.query;
 
   if (!query || typeof query !== 'string') {
@@ -28,7 +38,11 @@ export async function searchBook(req: Request, res: Response, next: NextFunction
   }
 }
 
-export async function addBook(req: Request, res: Response, next: NextFunction) {
+export async function addBook(
+  req: Request<Record<string, never>, SuccessResponse, AddBookInput>,
+  res: Response<SuccessResponse>,
+  next: NextFunction
+) {
   try {
     await bookService.addBook(req.user!.dbUserId, req.body);
     return res.status(200).json({ success: true });
@@ -38,7 +52,7 @@ export async function addBook(req: Request, res: Response, next: NextFunction) {
   }
 }
 
-export async function listBooks(req: Request, res: Response, next: NextFunction) {
+export async function listBooks(req: Request, res: Response<BookListResponse>, next: NextFunction) {
   try {
     const books = await bookService.listBooksWithSentences(req.user!.dbUserId);
     return res.status(200).json({ books });
@@ -49,7 +63,11 @@ export async function listBooks(req: Request, res: Response, next: NextFunction)
 }
 
 // 문장 추가
-export async function addSentence(req: Request, res: Response, next: NextFunction) {
+export async function addSentence(
+  req: Request<BookIdParams, SuccessResponse, AddSentenceBody>,
+  res: Response<SuccessResponse>,
+  next: NextFunction
+) {
   const { bookId } = req.params;
   const { content, pageNumber } = req.body;
 
@@ -63,7 +81,11 @@ export async function addSentence(req: Request, res: Response, next: NextFunctio
 }
 
 // 문장 목록 조회
-export async function getSentences(req: Request, res: Response, next: NextFunction) {
+export async function getSentences(
+  req: Request<BookIdParams>,
+  res: Response<SentenceListResponse>,
+  next: NextFunction
+) {
   const { bookId } = req.params;
 
   try {
@@ -76,7 +98,11 @@ export async function getSentences(req: Request, res: Response, next: NextFuncti
 }
 
 // 대표 문장 설정
-export async function setRepresentativeSentence(req: Request, res: Response, next: NextFunction) {
+export async function setRepresentativeSentence(
+  req: Request<SentenceParams>,
+  res: Response<SuccessResponse>,
+  next: NextFunction
+) {
   const { bookId, sentenceId } = req.params;
 
   try {

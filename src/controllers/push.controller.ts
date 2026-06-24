@@ -1,7 +1,12 @@
 import { Request, Response, NextFunction } from 'express';
 import { sendPushNotification } from '../fcmManager';
+import { SendPushBody, PushResponse } from '../types';
 
-export async function sendPush(req: Request, res: Response, next: NextFunction) {
+export async function sendPush(
+  req: Request<Record<string, never>, PushResponse, SendPushBody>,
+  res: Response<PushResponse>,
+  next: NextFunction
+) {
   try {
     const { title, content, topic } = req.body;
     const result = await sendPushNotification(

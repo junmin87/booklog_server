@@ -1,8 +1,14 @@
 import { Request, Response, NextFunction } from 'express';
 import * as userService from '../services/user.service';
 import { AppError } from '../errors/AppError';
+import {
+  UpdateCountryBody,
+  UpdateFcmTokenBody,
+  UserProfileResponse,
+  SuccessResponse,
+} from '../types';
 
-export async function getMe(req: Request, res: Response, next: NextFunction) {
+export async function getMe(req: Request, res: Response<UserProfileResponse>, next: NextFunction) {
   try {
     const user = await userService.getUser(req.user!.dbUserId);
 
@@ -25,7 +31,11 @@ export async function getMe(req: Request, res: Response, next: NextFunction) {
   }
 }
 
-export async function updateCountry(req: Request, res: Response, next: NextFunction) {
+export async function updateCountry(
+  req: Request<Record<string, never>, SuccessResponse, UpdateCountryBody>,
+  res: Response<SuccessResponse>,
+  next: NextFunction
+) {
   const { country_code, language_code } = req.body;
 
   try {
@@ -37,7 +47,11 @@ export async function updateCountry(req: Request, res: Response, next: NextFunct
   }
 }
 
-export async function updateFcmToken(req: Request, res: Response, next: NextFunction) {
+export async function updateFcmToken(
+  req: Request<Record<string, never>, SuccessResponse, UpdateFcmTokenBody>,
+  res: Response<SuccessResponse>,
+  next: NextFunction
+) {
   const { fcm_token } = req.body;
 
   try {
@@ -49,7 +63,7 @@ export async function updateFcmToken(req: Request, res: Response, next: NextFunc
   }
 }
 
-export async function deleteFcmToken(req: Request, res: Response, next: NextFunction) {
+export async function deleteFcmToken(req: Request, res: Response<SuccessResponse>, next: NextFunction) {
   try {
     await userService.deleteFcmToken(req.user!.dbUserId);
     return res.status(200).json({ success: true });
@@ -60,12 +74,12 @@ export async function deleteFcmToken(req: Request, res: Response, next: NextFunc
 }
 
 // 애플 탈퇴
-export async function deleteAppleUser(req: Request, res: Response, next: NextFunction) {
+export async function deleteAppleUser(req: Request, res: Response<SuccessResponse>, next: NextFunction) {
   try {
     await userService.softDeleteUser(req.user!.dbUserId);
     return res.status(200).json({ success: true });
-  } catch (err: any) {
-    if (err?.code === 'NOT_FOUND') {
+  } catch (err: unknown) {
+    if (err && typeof err === 'object' && 'code' in err && err.code === 'NOT_FOUND') {
       return next(new AppError(404, '유저 없음'));
     }
     console.error('❌ 계정 탈퇴 실패:', err);

@@ -9,6 +9,16 @@ import {
   handleKakaoUserUpsert,  // 카카오
 } from '../services/auth.service';
 import { AppError } from '../errors/AppError';
+import {
+  JwtPayload,
+  AppleLoginBody,
+  AppleRevokeBody,
+  KakaoLoginBody,
+  KakaoUserResponse,
+  ValidateTokenResponse,
+  LoginResponse,
+  MessageResponse,
+} from '../types';
 
 
 
@@ -16,7 +26,7 @@ export { generateAppleClientSecret, revokeAppleToken };
 
 // 오토 로그인때 주로 사용함
 // JWT token validation
-export async function validateToken(req: Request, res: Response, next: NextFunction) {
+export async function validateToken(req: Request, res: Response<ValidateTokenResponse>, next: NextFunction) {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -26,18 +36,9 @@ export async function validateToken(req: Request, res: Response, next: NextFunct
   const token = authHeader.split(' ')[1];
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as {
-      userId: string;
-      dbUserId: string;
-      email?: string;
-      snsType: string;
-    };
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as JwtPayload;
 
-    const { userId, email, snsType } = decoded as {
-      userId: string;
-      email?: string;
-      snsType: 'apple';
-    };
+    const { userId, email, snsType } = decoded;
 
     const user = await getValidatedUser(decoded.dbUserId);
 
@@ -59,7 +60,11 @@ export async function validateToken(req: Request, res: Response, next: NextFunct
 }
 
 // Apple Sign In
-export async function appleLogin(req: Request, res: Response, next: NextFunction) {
+export async function appleLogin(
+  req: Request<Record<string, never>, LoginResponse, AppleLoginBody>,
+  res: Response<LoginResponse>,
+  next: NextFunction
+) {
   const { userIdentifier, email, authorizationCode } = req.body;
 
   let refreshToken: string | null = null;
@@ -102,7 +107,11 @@ export async function appleLogin(req: Request, res: Response, next: NextFunction
 }
 
 // Apple token revocation
-export async function appleRevoke(req: Request, res: Response, next: NextFunction) {
+export async function appleRevoke(
+  req: Request<Record<string, never>, MessageResponse, AppleRevokeBody>,
+  res: Response<MessageResponse>,
+  next: NextFunction
+) {
   try {
     const { refreshToken } = req.body;
     await revokeAppleToken(refreshToken);
@@ -114,7 +123,11 @@ export async function appleRevoke(req: Request, res: Response, next: NextFunctio
 }
 
 // Kakao Login
-export async function kakaoLogin(req: Request, res: Response, next: NextFunction) {
+export async function kakaoLogin(
+  req: Request<Record<string, never>, LoginResponse, KakaoLoginBody>,
+  res: Response<LoginResponse>,
+  next: NextFunction
+) {
   const { accessToken } = req.body;
 
   if (!accessToken) {
@@ -124,7 +137,7 @@ export async function kakaoLogin(req: Request, res: Response, next: NextFunction
 
   // 카카오 API로 유저 정보 조회
   // Verify user by calling Kakao API with the access token
-  let kakaoUser;
+  let kakaoUser: KakaoUserResponse;
   try {
     const response = await fetch('https://kapi.kakao.com/v2/user/me', {
       headers: { Authorization: `Bearer ${accessToken}` },
