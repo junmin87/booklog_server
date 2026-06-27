@@ -4,6 +4,7 @@ import { AppError } from '../errors/AppError';
 import {
   AddBookInput,
   AddSentenceBody,
+  UpdateBookStatusBody,
   BookIdParams,
   SentenceParams,
   BookListResponse,
@@ -58,6 +59,24 @@ export async function listBooks(req: Request, res: Response<BookListResponse>, n
     return res.status(200).json({ books });
   } catch (err) {
     console.error('❌ 책 목록 조회 실패:', err);
+    return next(err);
+  }
+}
+
+// 책 상태 변경
+export async function updateBookStatus(
+  req: Request<BookIdParams, SuccessResponse, UpdateBookStatusBody>,
+  res: Response<SuccessResponse>,
+  next: NextFunction
+) {
+  const { bookId } = req.params;
+  const { status } = req.body;
+
+  try {
+    await bookService.updateBookStatus(req.user!.dbUserId, bookId, status);
+    return res.status(200).json({ success: true });
+  } catch (err) {
+    console.error('❌ 책 상태 변경 실패:', err);
     return next(err);
   }
 }

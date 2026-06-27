@@ -1,13 +1,28 @@
 import axios from 'axios';
 import { supabase } from '../lib/supabase';
+import { AppError } from '../errors/AppError';
 import {
   AladinItem,
   AladinItemListResponse,
   BookSearchResult,
   BookWithRepresentativeSentence,
   AddBookInput,
+  BookStatus,
   SentenceRow,
 } from '../types';
+
+// DEPRECATED: legacy values, remove after client rollout.
+// Maps the old Flutter client's status values onto the current DB enum so only
+// BOOK_STATUSES values are ever written. New values pass through unchanged.
+const LEGACY_STATUS_ALIASES: Record<string, BookStatus> = {
+  wish: 'want_to_read',
+  want: 'want_to_read',
+  done: 'completed',
+};
+
+function normalizeStatus(status: string): BookStatus {
+  return LEGACY_STATUS_ALIASES[status] ?? (status as BookStatus);
+}
 
 const ALADIN_BASE_PARAMS = {
   ttbkey: process.env.ALADIN_TTB_KEY,
@@ -62,7 +77,7 @@ export async function addBook(
     cover_url: fields.cover_url ?? null,
     description: fields.description ?? null,
     category_name: fields.category_name ?? null,
-    status: fields.status ?? 'reading',
+    status: fields.status ? normalizeStatus(fields.status) : 'reading',
     current_page: fields.current_page ?? 0,
     total_page: fields.total_page ?? null,
   });
@@ -106,6 +121,30 @@ export async function listBooksWithSentences(
       return { ...book, representative_sentence: sentence.content };
     })
   );
+}
+
+export async function updateBookStatus(
+  dbUserId: string,
+  bookId: string,
+  status: BookStatus
+): Promise<void> {
+  // DEPRECATED: legacy values, remove after client rollout.
+  // Normalize at the entry point so only new enum values reach the DB.
+  const normalizedStatus = normalizeStatus(status);
+
+  // Scope the update by user_id so a user can only mutate their own book.
+  // `.select()` lets us detect when nothing matched (missing book or not owned).
+  const { data, error } = await supabase
+    .from('booklog_books')
+    .update({ status: normalizedStatus })
+    .eq('id', bookId)
+    .eq('user_id', dbUserId)
+    .is('deleted_at', null)
+    .select('id')
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) throw new AppError(404, '책을 찾을 수 없습니다');
 }
 
 export async function addSentence(

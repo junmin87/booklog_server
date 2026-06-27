@@ -5,6 +5,12 @@
 // These are declared as `type` aliases (not interfaces) so they carry an
 // implicit index signature and satisfy Supabase's `GenericTable` constraint.
 
+// Allowed values for `booklog_books.status`. Declared as a runtime constant so
+// it can back both the `BookStatus` union type and Joi validation without
+// duplicating the literal list.
+export const BOOK_STATUSES = ['want_to_read', 'reading', 'completed'] as const;
+export type BookStatus = (typeof BOOK_STATUSES)[number];
+
 export type UserRow = {
   id: string;
   email: string | null;
@@ -48,7 +54,7 @@ export type BookRow = {
   cover_url: string | null;
   description: string | null;
   category_name: string | null;
-  status: string;
+  status: BookStatus;
   current_page: number;
   total_page: number | null;
   deleted_at: string | null;
@@ -66,7 +72,7 @@ export type BookInsert = {
   cover_url?: string | null;
   description?: string | null;
   category_name?: string | null;
-  status?: string;
+  status?: BookStatus;
   current_page?: number;
   total_page?: number | null;
   deleted_at?: string | null;

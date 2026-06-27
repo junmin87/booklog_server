@@ -1,6 +1,6 @@
 // Request / response DTOs exchanged over the HTTP layer.
 
-import { BookRow, SentenceRow } from './database';
+import { BookRow, SentenceRow, BookStatus } from './database';
 import { BookSearchResult } from './aladin';
 
 // ---- Request bodies ----
@@ -38,7 +38,7 @@ export interface AddBookInput {
   cover_url?: string;
   description?: string;
   category_name?: string;
-  status?: string;
+  status?: BookStatus;
   current_page?: number;
   total_page?: number;
 }
@@ -46,6 +46,10 @@ export interface AddBookInput {
 export interface AddSentenceBody {
   content: string;
   pageNumber?: number;
+}
+
+export interface UpdateBookStatusBody {
+  status: BookStatus;
 }
 
 export interface SendPushBody {
