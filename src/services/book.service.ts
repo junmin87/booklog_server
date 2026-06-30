@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { supabase } from '../lib/supabase';
+import { sql } from '../lib/postgres';
 import { AppError } from '../errors/AppError';
 import {
   AladinItem,
@@ -182,17 +183,20 @@ export async function setRepresentativeSentence(
   bookId: string,
   sentenceId: string
 ): Promise<void> {
-  await supabase
-    .from('booklog_sentences')
-    .update({ is_representative: false })
-    .eq('book_id', bookId)
-    .eq('user_id', dbUserId);
+  // Two writes that must be atomic: clear the existing representative flag for
+  // the book, then set it on the chosen sentence. Run them inside a real
+  // transaction so a failure can't leave the book with zero representatives.
+  await sql.begin(async (tx) => {
+    await tx`
+      UPDATE booklog_sentences
+      SET is_representative = false
+      WHERE book_id = ${bookId} AND user_id = ${dbUserId}
+    `;
 
-  const { error } = await supabase
-    .from('booklog_sentences')
-    .update({ is_representative: true })
-    .eq('id', sentenceId)
-    .eq('user_id', dbUserId);
-
-  if (error) throw error;
+    await tx`
+      UPDATE booklog_sentences
+      SET is_representative = true
+      WHERE id = ${sentenceId} AND user_id = ${dbUserId}
+    `;
+  });
 }

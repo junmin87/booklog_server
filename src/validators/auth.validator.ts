@@ -15,3 +15,8 @@ export const appleLoginSchema = Joi.object({
 export const appleRevokeSchema = Joi.object({
   refreshToken: Joi.string().required(),
 });
+
+// POST /auth/kakao/login
+export const kakaoLoginSchema = Joi.object({
+  accessToken: Joi.string().required(),
+});
