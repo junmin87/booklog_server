@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { sendPushNotification } from '../fcmManager';
+import { sendSuccess } from '../utils/response';
 import { SendPushBody, PushResponse } from '../types';
 
 export async function sendPush(
@@ -14,7 +15,7 @@ export async function sendPush(
       content || '오늘도 좋은 문장을 만나보세요',
       topic || 'daily'
     );
-    res.status(200).json({ success: true, result });
+    sendSuccess(res, { result });
   } catch (error) {
     next(error);
   }

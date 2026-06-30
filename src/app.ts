@@ -9,6 +9,7 @@ import authRouter from './routes/auth.routes';
 import userRouter from './routes/user.routes';
 import bookRouter from './routes/book.routes';
 import { errorHandler } from './middlewares/errorHandler';
+import { defaultLimiter } from './middlewares/rateLimiter';
 import pushRouter from './routes/push.routes';
 
 const app = express();
@@ -18,6 +19,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cors());
+app.use(defaultLimiter);
 
 app.use((req: Request, res: express.Response, next: NextFunction) => {
   if (req.method === 'POST') {
