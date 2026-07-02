@@ -9,7 +9,6 @@ import {
   handleKakaoUserUpsert,  // 카카오
 } from '../services/auth.service';
 import { AppError } from '../errors/AppError';
-import { sendSuccess } from '../utils/response';
 import {
   JwtPayload,
   AppleLoginBody,
@@ -47,7 +46,7 @@ export async function validateToken(req: Request, res: Response<ValidateTokenRes
       return next(new AppError(401, 'User not found or deleted'));
     }
 
-    return sendSuccess(res, {
+    return res.status(200).json({
       valid: true,
       userId,
       email: email ?? null,
@@ -100,7 +99,7 @@ export async function appleLogin(
     { expiresIn: '30d' }
   );
 
-  return sendSuccess(res, {
+  return res.json({
     serverToken,
     ...(refreshToken && { refreshToken }),
     country_code: countryCode,
@@ -116,7 +115,7 @@ export async function appleRevoke(
   try {
     const { refreshToken } = req.body;
     await revokeAppleToken(refreshToken);
-    return sendSuccess(res, { message: 'Apple token revoked successfully' });
+    return res.status(200).json({ message: 'Apple token revoked successfully' });
   } catch (error) {
     console.error('❌ Apple revoke error:', error);
     return next(new AppError(500, 'Failed to revoke Apple token'));
@@ -177,7 +176,7 @@ export async function kakaoLogin(
     { expiresIn: '30d' }
   );
 
-  return sendSuccess(res, {
+  return res.json({
     serverToken,
     country_code: countryCode,
   });

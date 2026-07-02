@@ -1,7 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import * as userService from '../services/user.service';
 import { AppError } from '../errors/AppError';
-import { sendSuccess } from '../utils/response';
 import {
   UpdateCountryBody,
   UpdateFcmTokenBody,
@@ -17,7 +16,7 @@ export async function getMe(req: Request, res: Response<UserProfileResponse>, ne
       return next(new AppError(401, 'User not found or deleted'));
     }
 
-    return sendSuccess(res, {
+    return res.status(200).json({
       id: user.id,
       email: user.email ?? null,
       countryCode: user.country_code ?? null,
@@ -41,7 +40,7 @@ export async function updateCountry(
 
   try {
     await userService.updateCountry(req.user!.dbUserId, country_code, language_code);
-    return sendSuccess(res, null);
+    return res.status(200).json({ success: true });
   } catch (err) {
     console.error('❌ country 업데이트 실패:', err);
     return next(err);
@@ -57,7 +56,7 @@ export async function updateFcmToken(
 
   try {
     await userService.updateFcmToken(req.user!.dbUserId, fcm_token);
-    return sendSuccess(res, null);
+    return res.status(200).json({ success: true });
   } catch (err) {
     console.error('❌ FCM 토큰 업데이트 실패:', err);
     return next(err);
@@ -67,7 +66,7 @@ export async function updateFcmToken(
 export async function deleteFcmToken(req: Request, res: Response<SuccessResponse>, next: NextFunction) {
   try {
     await userService.deleteFcmToken(req.user!.dbUserId);
-    return sendSuccess(res, null);
+    return res.status(200).json({ success: true });
   } catch (err) {
     console.error('❌ FCM 토큰 삭제 실패:', err);
     return next(err);
@@ -78,7 +77,7 @@ export async function deleteFcmToken(req: Request, res: Response<SuccessResponse
 export async function deleteAppleUser(req: Request, res: Response<SuccessResponse>, next: NextFunction) {
   try {
     await userService.softDeleteUser(req.user!.dbUserId);
-    return sendSuccess(res, null);
+    return res.status(200).json({ success: true });
   } catch (err: unknown) {
     if (err && typeof err === 'object' && 'code' in err && err.code === 'NOT_FOUND') {
       return next(new AppError(404, '유저 없음'));
