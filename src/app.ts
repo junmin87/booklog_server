@@ -17,6 +17,7 @@ import pushRouter from './routes/push.routes';
 const app = express();
 const port = process.env.PORT || 3000;
 
+app.set('trust proxy', true);
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
